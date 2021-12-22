@@ -445,7 +445,7 @@ class SparseTensor(Tensor):
         tensor_stride = torch.IntTensor(self.tensor_stride)
         return sparse_tensor, min_coords, tensor_stride
 
-    def dense(self, shape=None, min_coordinate=None, contract_stride=True):
+    def dense(self, shape=None, min_coordinate=None, contract_stride=True, default_value=0.0):
         r"""Convert the :attr:`MinkowskiEngine.SparseTensor` to a torch dense
         tensor.
 
@@ -474,7 +474,7 @@ class SparseTensor(Tensor):
 
         """
         if min_coordinate is not None:
-            assert isinstance(min_coordinate, torch.IntTensor)
+            assert isinstance(min_coordinate, torch.IntTensor) or isinstance(min_coordinate, torch.cuda.IntTensor)
             assert min_coordinate.numel() == self._D
         if shape is not None:
             assert isinstance(shape, torch.Size)
@@ -483,7 +483,7 @@ class SparseTensor(Tensor):
                 shape = torch.Size([shape[0], self._F.size(1), *[s for s in shape[2:]]])
 
         # Use int tensor for all operations
-        tensor_stride = torch.IntTensor(self.tensor_stride)
+        tensor_stride = torch.IntTensor(self.tensor_stride).to(self.coordinates.device)
 
         # New coordinates
         batch_indices = self.C[:, 0]
@@ -514,9 +514,9 @@ class SparseTensor(Tensor):
         nchannels = self.F.size(1)
         if shape is None:
             size = coords.max(0)[0] + 1
-            shape = torch.Size([batch_indices.max() + 1, nchannels, *size.numpy()])
+            shape = torch.Size([batch_indices.max() + 1, nchannels, *size.cpu().numpy()])
 
-        dense_F = torch.zeros(shape, dtype=self.F.dtype, device=self.F.device)
+        dense_F = torch.full(shape, dtype=self.F.dtype, device=self.F.device, fill_value=default_value)
 
         tcoords = coords.t().long()
         batch_indices = batch_indices.long()
@@ -526,7 +526,7 @@ class SparseTensor(Tensor):
             + "] = self.F"
         )
 
-        tensor_stride = torch.IntTensor(self.tensor_stride)
+        tensor_stride = torch.IntTensor(self.tensor_stride).to(self.coordinates.device)
         return dense_F, min_coordinate, tensor_stride
 
     def slice(self, X):
